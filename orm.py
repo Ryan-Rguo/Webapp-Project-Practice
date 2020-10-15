@@ -211,7 +211,7 @@ class Model(dict, metaclass=ModelMetaclass):
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
         rows = await execute(self.__insert__, args)
-        if row != 1:
+        if rows != 1:
             logging.warning('failed to insert record: affected rows: %s' % rows)
 
     async def update(self):
@@ -226,3 +226,4 @@ class Model(dict, metaclass=ModelMetaclass):
         rows = await execute(self.__delete__, args)
         if row != 1:
             logging.warning('failed to remove by primary key: affected rows: %s' % rows)
+
