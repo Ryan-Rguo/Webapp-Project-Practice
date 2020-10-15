@@ -37,7 +37,7 @@ def post(path):
         return wrapper
     return decorator
 
-def get_required_kw_args(fn):
+def get_required_kw_args(fn):     # arguments after one with *, and has no default value.
     args = []
     params = inspect.signature(fn).parameters
     for name, param in params.items():
@@ -45,7 +45,7 @@ def get_required_kw_args(fn):
             args.append(name)
     return tuple(args)
 
-def get_named_kw_args(fn):
+def get_named_kw_args(fn):        # arguments after one with *.
     args = []
     params = inspect.signature(fn).parameters
     for name, param in params.items():
@@ -53,13 +53,13 @@ def get_named_kw_args(fn):
             args.append(name)
     return tuple(args)
 
-def has_named_kw_args(fn):
+def has_named_kw_args(fn):       # True if there are arguments after one with *, except with two *..
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             return True
 
-def has_var_kw_arg(fn):
+def has_var_kw_arg(fn):          # True if the last argument is with two *.
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.VAR_KEYWORD:
@@ -106,7 +106,7 @@ class RequestHandler(object):
                 else:
                     return web.HTTPBadRequest('Unsupported Content-Type: %s' % request.content_type)
             if request.method == 'GET':
-                qs = request.query_string
+                qs = request.query_string               # get arguments from http address (from GET method)
                 if qs:
                     kw = dict()
                     for k, v in parse.parse_qs(qs, True).items():
