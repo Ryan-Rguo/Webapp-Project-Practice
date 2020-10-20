@@ -14,6 +14,7 @@ from datetime import datetime
 from aiohttp import web
 from jinja2 import Environment, FileSystemLoader
 from coroweb import add_routes, add_static
+from config_default import configs
 import logging
 logging.basicConfig(level=logging.INFO)
 
