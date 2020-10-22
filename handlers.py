@@ -9,36 +9,26 @@ import logging
 import hashlib
 import base64
 import asyncio
+import markdown2
+from aiohttp import web
 from coroweb import get, post
-import apis
+from apis import APIValueError, APIResourceNotFoundError, APIError, APIPermissionError
 from models import User, Comment, Blog, next_id
 from config import configs
-
 
 COOKIE_NAME = 'awesession'
 _COOKIE_KEY = configs.session.secret
 
 # 计算加密cookie:
 def user2cookie(user, max_age):
+    """
+    Generate cookie str by user.
+    """
     # build cookie string by: id-expires-sha1
     expires = str(int(time.time() + max_age))
     s = '%s-%s-%s-%s' % (user.id, user.passwd, expires, _COOKIE_KEY)
     L = [user.id, expires, hashlib.sha1(s.encode('utf-8')).hexdigest()]
     return '-'.join(L)
-
-
-async def auth_factory(app, handler):
-    async def auth(request):
-        logging.info('check user: %s %s' % (request.method, request.path))
-        request.__user__ = None
-        cookie_str = request.cookie.get(COOKIE_NAME)
-        if cookie_str:
-            user = await cookie2user(cookie_str)
-            if user:
-                logging.info('set current user: %s' % user.email)
-                request.__user__ = user
-        return await handler(request)
-    return auth
 
 
 # 解密cookie:
@@ -102,7 +92,7 @@ async def authenticate(*, email, passwd):
         raise APIValueError('email', 'Invalid email.')
     if not passwd:
         raise APIValueError('passwd', 'Invalid password.')
-    user = await User.findAll('email=?', [email])
+    users = await User.findAll('email=?', [email])
     if len(users) == 0:
         raise APIValueError('email', 'Email not exist.')
     user = users[0]
@@ -112,13 +102,22 @@ async def authenticate(*, email, passwd):
     sha1.update(b':')
     sha1.update(passwd.encode('utf-8'))
     if user.passwd != sha1.hexdigest():
-        raise APIValueError('passwd', 'Invalid password.')
+        raise APIValueError('passwd', 'Password does not match.')
     # authenticate ok, set cookie:
-    r = web.response()
-    r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), mas_age=86400, httponly=True)
+    r = web.Response()
+    r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
     user.passwd = '******'
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
+
+
+@get('/signout')
+async def signout(request):
+    referer = request.headers.get('Referer')
+    r = web.HTTPFound(referer or '/')
+    r.set_cookie(COOKIE_NAME, '-delete-', max_age=0, httponly=True)
+    logging.info('user signed out.')
     return r
 
 
@@ -127,7 +126,7 @@ _RE_SHA1 = re.compile(r'^[0-9a-f]{40}$')
 
 
 @post('/api/users')
-async def api_get_users(*, email, name, passwd):
+async def api_register_user(*, email, name, passwd):
     if not name or not name.strip():
         raise APIValueError('name')
     if not email or not _RE_EMAIL.match(email):
@@ -138,7 +137,7 @@ async def api_get_users(*, email, name, passwd):
     if len(users) > 0:
         raise APIError('register: failed', 'email', 'Email is already in use.')
     uid = next_id()
-    sha1_passwd = '%s: %s' % (uid, passwd)
+    sha1_passwd = '%s:%s' % (uid, passwd)
     user = User(id=uid, name=name.strip(), email=email, passwd=hashlib.sha1(sha1_passwd.encode('utf-8')).hexdigest(),
                 image='http://www.gravatar.com/avatar/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
     await user.save()
